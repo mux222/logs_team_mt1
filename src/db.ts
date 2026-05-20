@@ -11,6 +11,10 @@ export const openDB = (): Promise<IDBDatabase> => {
 
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
+    request.onblocked = () => {
+      console.warn('تنبيه: تم حظر فتح قاعدة البيانات بسبب وجود علامات تبويب أخرى مفتوحة. يرجى إغلاقها لتتم الترقية.');
+      reject(new Error('IndexedDB blocked'));
+    };
 
     request.onupgradeneeded = (event: any) => {
       const db = event.target.result;
@@ -85,15 +89,29 @@ const localDeleteItem = (storeName: string, key: any): Promise<void> => {
 
 
 // --- Supabase Config ---
-// Typecast import.meta to avoid strict property checks of dev environments
-const env = (import.meta as any).env || {};
-const supabaseUrl = env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || '';
+// @ts-ignore
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+// @ts-ignore
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Create client only if configuration variables exist in env
+// Create client only if configuration variables exist
 export const supabase = (supabaseUrl && supabaseAnonKey)
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
+
+export interface DbDiagnosticInfo {
+  supabaseActive: boolean;
+  hasErrors: boolean;
+  lastErrorMessage: string | null;
+  tableErrors: Record<string, string>;
+}
+
+export const dbDiagnostics: DbDiagnosticInfo = {
+  supabaseActive: !!supabase,
+  hasErrors: false,
+  lastErrorMessage: null,
+  tableErrors: {}
+};
 
 // 1. Get all items
 export const getAll = async <T>(storeName: string): Promise<T[]> => {
@@ -105,12 +123,27 @@ export const getAll = async <T>(storeName: string): Promise<T[]> => {
 
       if (error) {
         console.error(`خطأ أثناء جلب البيانات من Supabase لجدول ${storeName}:`, error);
+        dbDiagnostics.hasErrors = true;
+        dbDiagnostics.lastErrorMessage = error.message;
+        dbDiagnostics.tableErrors[storeName] = error.message;
         // Fallback to local storage
         return localGetAll<T>(storeName);
       }
+      
+      // Successfully fetched
+      if (dbDiagnostics.tableErrors[storeName]) {
+        delete dbDiagnostics.tableErrors[storeName];
+        if (Object.keys(dbDiagnostics.tableErrors).length === 0) {
+          dbDiagnostics.hasErrors = false;
+          dbDiagnostics.lastErrorMessage = null;
+        }
+      }
       return (data as T[]) || [];
-    } catch (e) {
+    } catch (e: any) {
       console.error(`خطأ مفاجئ أثناء الاتصال بـ Supabase:`, e);
+      dbDiagnostics.hasErrors = true;
+      dbDiagnostics.lastErrorMessage = e?.message || String(e);
+      dbDiagnostics.tableErrors[storeName] = e?.message || String(e);
       return localGetAll<T>(storeName);
     }
   }
@@ -123,15 +156,30 @@ export const putItem = async <T>(storeName: string, item: T): Promise<void> => {
     try {
       const { error } = await supabase
         .from(storeName)
-        .upsert(item as any); // Cast to any to bypass extreme generic checks
+        .upsert(item as any);
 
       if (error) {
         console.error(`خطأ أثناء حفظ البيانات في Supabase لجدول ${storeName}:`, error);
+        dbDiagnostics.hasErrors = true;
+        dbDiagnostics.lastErrorMessage = error.message;
+        dbDiagnostics.tableErrors[storeName] = error.message;
         return localPutItem<T>(storeName, item);
       }
+
+      // Successfully updated
+      if (dbDiagnostics.tableErrors[storeName]) {
+        delete dbDiagnostics.tableErrors[storeName];
+        if (Object.keys(dbDiagnostics.tableErrors).length === 0) {
+          dbDiagnostics.hasErrors = false;
+          dbDiagnostics.lastErrorMessage = null;
+        }
+      }
       return;
-    } catch (e) {
+    } catch (e: any) {
       console.error(`خطأ مفاجئ أثناء الاتصال بـ Supabase لعملية الحفظ:`, e);
+      dbDiagnostics.hasErrors = true;
+      dbDiagnostics.lastErrorMessage = e?.message || String(e);
+      dbDiagnostics.tableErrors[storeName] = e?.message || String(e);
       return localPutItem<T>(storeName, item);
     }
   }
@@ -150,11 +198,26 @@ export const deleteItem = async (storeName: string, key: any): Promise<void> => 
 
       if (error) {
         console.error(`خطأ أثناء حذف البيانات من Supabase لجدول ${storeName}:`, error);
+        dbDiagnostics.hasErrors = true;
+        dbDiagnostics.lastErrorMessage = error.message;
+        dbDiagnostics.tableErrors[storeName] = error.message;
         return localDeleteItem(storeName, key);
       }
+
+      // Successfully deleted
+      if (dbDiagnostics.tableErrors[storeName]) {
+        delete dbDiagnostics.tableErrors[storeName];
+        if (Object.keys(dbDiagnostics.tableErrors).length === 0) {
+          dbDiagnostics.hasErrors = false;
+          dbDiagnostics.lastErrorMessage = null;
+        }
+      }
       return;
-    } catch (e) {
+    } catch (e: any) {
       console.error(`خطأ مفاجئ أثناء الاتصال بـ Supabase لعملية الحذف:`, e);
+      dbDiagnostics.hasErrors = true;
+      dbDiagnostics.lastErrorMessage = e?.message || String(e);
+      dbDiagnostics.tableErrors[storeName] = e?.message || String(e);
       return localDeleteItem(storeName, key);
     }
   }
