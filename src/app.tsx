@@ -45,12 +45,14 @@ import {
   ClipboardList
 } from 'lucide-react';
 import { User, UserRole, Ticket, Ban, Message, BanEvidence, AuditLog, PersonalNote } from './types';
-import { getAll, putItem, deleteItem, supabase } from './db';
+import { getAll, putItem, deleteItem, supabase, dbDiagnostics } from './db';
 
 export default function App() {
   const [activeSec, setActiveSec] = useState<'home' | 'team' | 'goals' | 'tickets' | 'bans' | 'manage' | 'profile' | 'audit_logs' | 'closed_tickets' | 'my_dashboard' | 'notepad' | 'manager_notes' | 'leaderboard'>('home');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [toast, setToast] = useState<{ show: boolean; msg: string } | null>(null);
+  const [showDbDiagnostics, setShowDbDiagnostics] = useState(false);
+  const [diagnosticsState, setDiagnosticsState] = useState(dbDiagnostics);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [selectedTicketForModal, setSelectedTicketForModal] = useState<Ticket | null>(null);
   const [selectedMemberForNotes, setSelectedMemberForNotes] = useState<User | null>(null);
@@ -128,6 +130,7 @@ export default function App() {
         console.error(e);
       } finally {
         setLoading(false);
+        setDiagnosticsState({ ...dbDiagnostics });
       }
     };
     initData();
@@ -1070,8 +1073,32 @@ ${renderIdentifiers(ban.identifiers)}
               <img src="https://i.postimg.cc/G3DsDrGz/W3j-Wowj-B-Photoroom.png" alt="Logo" className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,106,0,0.5)] group-hover:drop-shadow-[0_0_15px_rgba(255,106,0,0.8)] transition-all duration-300" referrerPolicy="no-referrer" />
             </div>
           </div>
-          <div className="font-orbitron font-black text-xl tracking-tighter">
-            MT <span className="text-orange">Logs</span>
+          <div className="flex flex-col text-right">
+            <div className="font-orbitron font-black text-xl tracking-tighter">
+              MT <span className="text-orange">Logs</span>
+            </div>
+            <div 
+              onClick={() => {
+                setDiagnosticsState({ ...dbDiagnostics });
+                setShowDbDiagnostics(true);
+              }}
+              className="flex items-center gap-1.5 text-[9px] font-black mt-0.5 select-none cursor-pointer hover:opacity-85 transition-opacity bg-white/5 hover:bg-white/10 px-2 py-0.5 rounded border border-white/5"
+              title="انقر لعرض حالة وتفاصيل اتصال قاعدة البيانات"
+            >
+              {supabase ? (
+                <>
+                  <span className={`w-1.5 h-1.5 rounded-full ${diagnosticsState.hasErrors ? 'bg-amber-400' : 'bg-emerald-400'} animate-pulse`}></span>
+                  <span className={`${diagnosticsState.hasErrors ? 'text-amber-400' : 'text-emerald-400'} tracking-wide uppercase font-mono flex items-center gap-1`}>
+                    سحابي {diagnosticsState.hasErrors ? '(محدود)' : '(نشط)'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  <span className="text-amber-400 tracking-wide uppercase font-mono">محلي (IndexedDB)</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
         
@@ -1115,7 +1142,7 @@ ${renderIdentifiers(ban.identifiers)}
         </div>
       </nav>
 
-      <main className="w-full px-0 py-10 pt-24 lg:pt-10">
+      <main className="w-full px-0 py-10 pt-111 lg:pt-5">
         <AnimatePresence mode="wait">
           {/* HOME SECTION */}
           {activeSec === 'home' && (
@@ -1500,7 +1527,7 @@ ${renderIdentifiers(ban.identifiers)}
                     <div className="space-y-6">
                       <h3 className="section-title text-orange font-bold flex items-center gap-2"><ClipboardList className="w-5 h-5" /> سجل المحادثات والأدلة</h3>
                       <div className="space-y-6">
-                        {selectedTicketForModal.msgs.sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0)).map((m, i) => (
+                        {[...selectedTicketForModal.msgs].sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0)).map((m, i) => (
                           <div key={i} className={`flex flex-col ${m.sender === 'system' ? 'items-center' : (m.sender === 'logs' ? 'items-end' : 'items-start')}`}>
                             <div className={`max-w-[90%] p-6 rounded-[32px] border ${m.sender === 'system' ? 'bg-white/5 border-white/10 text-orange/80 text-[11px]' : (m.sender === 'logs' ? 'bg-orange/10 border-orange/20 text-white' : 'bg-white/5 border-white/10 text-gray-200')}`}>
                                {m.sender !== 'system' && (
@@ -2497,7 +2524,7 @@ ${renderIdentifiers(ban.identifiers)}
                           )}
                         </div>
                         <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 custom-scrollbar z-10">
-                          {activeTicket.msgs.sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0)).map((m, i) => (
+                          {[...activeTicket.msgs].sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0)).map((m, i) => (
                             <div key={i} className={`flex flex-col group ${m.sender === 'system' ? 'items-center' : (m.sender === 'logs' ? 'items-end' : 'items-start')}`}>
                               {m.sender !== 'system' && (
                                 <div className={`flex items-center gap-2 mb-2 text-[9px] font-black tracking-widest uppercase px-2 ${m.sender === 'logs' ? 'flex-row-reverse text-orange' : 'text-text-dim'}`}>
@@ -2637,7 +2664,7 @@ ${renderIdentifiers(ban.identifiers)}
                           </div>
                         </div>
                         <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 custom-scrollbar z-10 opacity-80 filter grayscale-[0.3]">
-                          {activeTicket.msgs.sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0)).map((m, i) => (
+                          {[...activeTicket.msgs].sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0)).map((m, i) => (
                             <div key={i} className={`flex flex-col group ${m.sender === 'system' ? 'items-center' : (m.sender === 'logs' ? 'items-end' : 'items-start')}`}>
                               {m.sender !== 'system' && (
                                 <div className={`flex items-center gap-2 mb-2 text-[9px] font-black tracking-widest uppercase px-2 ${m.sender === 'logs' ? 'flex-row-reverse text-red' : 'text-text-dim'}`}>
@@ -2998,6 +3025,108 @@ ${renderIdentifiers(ban.identifiers)}
                 <div className="absolute top-6 left-6 flex items-center gap-3 bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="w-2 h-2 bg-orange rounded-full animate-ping"></div>
                   <span className="text-[10px] text-white font-black uppercase tracking-widest font-orbitron">MT Logs High-Def Evidence</span>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* DB Setup & Diagnostics Helper Modal */}
+      <AnimatePresence>
+        {showDbDiagnostics && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 overflow-y-auto"
+            onClick={() => setShowDbDiagnostics(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="card max-w-2xl w-full space-y-6 border-orange/40 shadow-[0_0_80px_rgba(255,106,0,0.15)] bg-black/95 p-8 rounded-[40px]"
+              onClick={e => e.stopPropagation()}
+              dir="rtl"
+            >
+              <div className="flex justify-between items-center border-b border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <Terminal className="text-orange" size={24} />
+                  <h3 className="text-xl font-black text-white font-arabic">مركز تشخيص قاعدة البيانات (Supabase Hub)</h3>
+                </div>
+                <button onClick={() => setShowDbDiagnostics(false)} className="bg-white/5 hover:bg-white/10 p-2 rounded-full transition-all">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-right">
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-text-dim font-arabic">مستوى الاتصال السحابي:</span>
+                    {supabase ? (
+                      <span className="text-emerald-400 font-bold text-xs bg-emerald-400/10 px-3 py-1 rounded-full">جاهز للبروتوكول السحابي</span>
+                    ) : (
+                      <span className="text-amber-400 font-bold text-xs bg-amber-400/10 px-3 py-1 rounded-full">غير معد محلياً (IndexedDB)</span>
+                    )}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-text-dim font-arabic">حالة الاستعلامات والاتصال الفعلي:</span>
+                    {diagnosticsState.hasErrors ? (
+                      <span className="text-amber-400 font-bold text-xs bg-amber-400/10 px-3 py-1 rounded-full flex items-center gap-1">محدود (يرجى مراجعة الجداول)</span>
+                    ) : (
+                      <span className="text-emerald-400 font-bold text-xs bg-emerald-400/10 px-3 py-1 rounded-full">ممتاز ومتصل بالكامل</span>
+                    )}
+                  </div>
+                </div>
+
+                {diagnosticsState.hasErrors && (
+                  <div className="p-4 bg-red/10 border border-red/20 rounded-2xl space-y-2">
+                    <h4 className="text-xs font-black text-red uppercase tracking-wider font-orbitron">Last Detected Error Message / تفاصيل الخطأ الأخير:</h4>
+                    <p className="text-xs text-gray-300 font-mono select-all bg-black/40 p-3 rounded-xl border border-white/5">{diagnosticsState.lastErrorMessage}</p>
+                    <p className="text-[11px] text-text-dim leading-relaxed font-arabic">
+                      * هذا الخطأ يعود غالباً إلى عدم إنشاء الجداول في حساب Supabase الخاص بك، أو عدم تفعيل سياسات المرور العامة (RLS) للمستخدمين غير المسجلين.
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-white font-arabic">حالة اتصال الجداول في السحابة:</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {['users', 'tickets', 'bans', 'audit_logs', 'personal_notes'].map(table => {
+                      const err = diagnosticsState.tableErrors[table];
+                      return (
+                        <div key={table} className={`p-4 rounded-xl border flex flex-col justify-between h-24 ${err ? 'bg-red/5 border-red/20' : 'bg-white/[0.02] border-white/5'}`}>
+                          <span className="text-xs font-mono font-bold text-gray-200">{table}</span>
+                          <span className={`text-[10px] font-bold ${err ? 'text-red/90' : 'text-emerald-400'}`}>
+                            {err ? 'خطأ في الاستعلام' : 'متصل وجاهز'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-5 bg-orange/5 border border-orange/20 rounded-3xl space-y-3">
+                  <h4 className="text-sm font-black text-orange font-arabic flex items-center gap-2 font-orbitron">🎯 حل المشكلة بثوانٍ: سكريبت البناء السريع</h4>
+                  <p className="text-xs text-text-dim leading-relaxed font-arabic">
+                    لقد جهزنا سكريبت SQL متكامل يؤسس كافة الجداول ويمنح الصلاحيات اللازمة بثانية واحدة. اتبّع ما يلي:
+                  </p>
+                  <ol className="text-[11px] text-text-dim space-y-2 list-decimal list-inside pr-2 font-arabic leading-relaxed">
+                    <li>تفضل بفتح لوحة تحكم حسابك في <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-orange underline font-bold">Supabase Console</a>.</li>
+                    <li>اختر مشروعك ثم انقر على <strong>SQL Editor</strong> من القائمة اليسرى.</li>
+                    <li>افتح سحب الأكواد من ملف <strong>SUPABASE_SETUP.sql</strong> الموجود في جذر مجلدات هذا المشروع وانسخه كاملاً.</li>
+                    <li>الصقه في محرر الاستعلامات بـ Supabase واضغط على الزر الأخضر <strong>Run</strong> لتأسيس الجداول بنجاح فوري!</li>
+                  </ol>
+                  <button 
+                    onClick={() => {
+                      setToast({ show: true, msg: "يرجى نسخ الملف SUPABASE_SETUP.sql من المجلد الرئيسي للمشروع" });
+                      setTimeout(() => setToast(null), 3000);
+                    }}
+                    className="btn-orange w-full !py-2.5 text-xs font-black shadow-lg"
+                  >
+                    أرشدني لملف التأسيس SQL Guide
+                  </button>
                 </div>
               </div>
             </motion.div>
