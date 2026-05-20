@@ -109,13 +109,37 @@ export default function App() {
     setConfirmModal({ show: true, title, message, onConfirm });
   };
 
-  // Supabase Realtime Synchronization - المزامنة الحية والريل تايم
+  useEffect(() => {
+    const initData = async () => {
+      try {
+        const u = await getAll<User>('users');
+        if (u.length === 0) {
+          const defaultAdmin: User = { user: 'admin', pass: '429', role: UserRole.MANAGER, status: 'active' };
+          await putItem('users', defaultAdmin);
+          setUsers([defaultAdmin]);
+        } else {
+          setUsers(u);
+        }
+        setTickets(await getAll<Ticket>('tickets'));
+        setBans(await getAll<Ban>('bans'));
+        setAuditLogs(await getAll<AuditLog>('audit_logs'));
+        setPersonalNotes(await getAll<PersonalNote>('personal_notes'));
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    initData();
+  }, []);
+
+  // Supabase Realtime Synchronization
   useEffect(() => {
     if (!supabase) return;
 
     const channel = supabase.channel('public_db_changes_sync');
 
-    // 1. مزامنة جدول المستخدمين تلقائياً
+    // Subscribe to users
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const newUser = payload.new as User;
@@ -134,7 +158,7 @@ export default function App() {
       }
     });
 
-    // 2. مزامنة التذاكر والرسائل تلقائياً فورا بدون تحديث الصفحة
+    // Subscribe to tickets
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const newTicket = payload.new as Ticket;
@@ -153,7 +177,7 @@ export default function App() {
       }
     });
 
-    // 3. مزامنة الباندات والمخالفات تلقائياً
+    // Subscribe to bans
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'bans' }, (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const newBan = payload.new as Ban;
@@ -172,7 +196,7 @@ export default function App() {
       }
     });
 
-    // 4. مزامنة العمليات والرقابة تلقائياً
+    // Subscribe to audit logs
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const newLog = payload.new as AuditLog;
@@ -191,7 +215,7 @@ export default function App() {
       }
     });
 
-    // 5. مزامنة الملاحظات الشخصية للمفكرة حياً
+    // Subscribe to personal notes
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'personal_notes' }, (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const newNote = payload.new as PersonalNote;
@@ -904,7 +928,7 @@ ${renderIdentifiers(ban.identifiers)}
                     <div className="w-16 h-[1px] bg-gradient-to-l from-transparent to-orange/50" />
                   </div>
                   <p className="text-text-dim max-w-xl mx-auto text-sm md:text-lg font-arabic leading-relaxed tracking-wide font-medium">
-                   نظام مستري تاون المتقدم للرقابة التقنية وإدارة البيانات الأمنية، بواجهة حصرية مخصصة للنخبة، يوفّر أعلى مستويات الشفافية والحماية الرقمية.
+                    نظام Mystery Town المتقدم للرقابة التقنية وإدارة البيانات الأمنية. واجهة حصرية مخصصة للنخبة تضمن أعلى مستويات الشفافية والحماية الرقمية.
                   </p>
                 </motion.div>
               </div>
@@ -1272,9 +1296,9 @@ ${renderIdentifiers(ban.identifiers)}
                   {personalNotes
                     .filter(n => n.userId === currentUser.user && (n.title.toLowerCase().includes(noteSearch.toLowerCase()) || n.content.toLowerCase().includes(noteSearch.toLowerCase())))
                     .sort((a,b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0) || b.updatedAt - a.updatedAt)
-                    .map(note => (
+                    .map((note, idx) => (
                       <div 
-                        key={note.id} 
+                        key={`personal_note_${note.id}_${idx}`} 
                         onClick={() => { setEditingNoteId(note.id); setNoteForm({ title: note.title, content: note.content, category: note.category }); }}
                         className={`p-5 rounded-3xl border transition-all cursor-pointer group relative overflow-hidden ${editingNoteId === note.id ? 'bg-orange/10 border-orange/40 shadow-[0_0_30px_rgba(255,106,0,0.1)]' : 'bg-black/40 border-white/5 hover:border-orange/20'}`}
                       >
@@ -2339,8 +2363,8 @@ ${renderIdentifiers(ban.identifiers)}
                             ? tickets.filter(t => t.status !== 'done') 
                             : tickets.filter(t => (t.creator === currentUser?.user || t.assignedTo === currentUser?.user) && t.status !== 'done')
                           ).filter(t => t.subject.toLowerCase().includes(ticketSearchQuery.toLowerCase()) || t.creator.toLowerCase().includes(ticketSearchQuery.toLowerCase()))
-                          .map(t => (
-                            <div key={t.id} className="card group hover:scale-[1.02] transition-all duration-500 border-white/5 hover:border-orange/30 !p-2 rounded-[32px] overflow-hidden" onClick={() => { setActiveTicketId(t.id); setTicketViewMode('all'); }}>
+                          .map((t, index) => (
+                            <div key={`ticket_grid_item_${t.id}_${index}`} className="card group hover:scale-[1.02] transition-all duration-500 border-white/5 hover:border-orange/30 !p-2 rounded-[32px] overflow-hidden" onClick={() => { setActiveTicketId(t.id); setTicketViewMode('all'); }}>
                               <div className="flex items-stretch bg-white/[0.01] group-hover:bg-orange/[0.02] transition-colors rounded-[30px] p-6">
                                 <div className="flex-1 space-y-4 text-right">
                                   <div className="flex items-center justify-between">
@@ -2421,8 +2445,8 @@ ${renderIdentifiers(ban.identifiers)}
                       {(isManager || isLogs
                         ? tickets.filter(t => t.status !== 'done') 
                         : tickets.filter(t => (t.creator === currentUser?.user || t.assignedTo === currentUser?.user) && t.status !== 'done')
-                      ).filter(t => t.subject.toLowerCase().includes(ticketSearchQuery.toLowerCase()) || t.creator.toLowerCase().includes(ticketSearchQuery.toLowerCase())).map(t => (
-                        <div key={t.id} className={`p-5 rounded-2xl border border-white/5 cursor-pointer transition-all duration-300 group relative overflow-hidden ${activeTicketId === t.id ? 'border-orange/40 bg-orange/5 shadow-lg' : 'hover:bg-white/[0.04]'}`} onClick={() => setActiveTicketId(t.id)}>
+                      ).filter(t => t.subject.toLowerCase().includes(ticketSearchQuery.toLowerCase()) || t.creator.toLowerCase().includes(ticketSearchQuery.toLowerCase())).map((t, idx) => (
+                        <div key={`ticket_sidebar_${t.id}_${idx}`} className={`p-5 rounded-2xl border border-white/5 cursor-pointer transition-all duration-300 group relative overflow-hidden ${activeTicketId === t.id ? 'border-orange/40 bg-orange/5 shadow-lg' : 'hover:bg-white/[0.04]'}`} onClick={() => setActiveTicketId(t.id)}>
                           <div className="flex justify-between items-start relative z-10 mb-2">
                             <span className={`font-bold text-sm group-hover:text-orange transition-colors ${activeTicketId === t.id ? 'text-orange' : 'text-white'}`}>{t.subject}</span>
                             <span className={`text-[9px] font-black px-3 py-1.5 rounded-xl uppercase tracking-widest shadow-inner ${t.status === 'open' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-orange/20 text-orange border border-orange/40 shadow-[0_0_15px_rgba(255,106,0,0.1)]'}`}>
@@ -2582,8 +2606,8 @@ ${renderIdentifiers(ban.identifiers)}
                           t.creator.toLowerCase().includes(closedTicketsSearchQuery.toLowerCase()) ||
                           (t.closedBy || '').toLowerCase().includes(closedTicketsSearchQuery.toLowerCase())
                         )
-                        .map(t => (
-                        <div key={t.id} className={`p-5 rounded-2xl border border-white/5 cursor-pointer transition-all duration-300 group relative overflow-hidden ${activeTicketId === t.id ? 'border-red/40 bg-red/5 shadow-lg' : 'hover:bg-white/[0.04]'}`} onClick={() => openTicketModal(t)}>
+                        .map((t, idx) => (
+                        <div key={`closed_ticket_${t.id}_${idx}`} className={`p-5 rounded-2xl border border-white/5 cursor-pointer transition-all duration-300 group relative overflow-hidden ${activeTicketId === t.id ? 'border-red/40 bg-red/5 shadow-lg' : 'hover:bg-white/[0.04]'}`} onClick={() => openTicketModal(t)}>
                           <p className="font-bold text-sm text-white mb-2 group-hover:text-red transition-colors">{t.subject}</p>
                           <div className="flex justify-between items-center text-[9px] text-text-dim">
                             <span className="flex items-center gap-1"><UserIcon size={10} /> {t.creator}</span>
@@ -2673,8 +2697,8 @@ ${renderIdentifiers(ban.identifiers)}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {users.filter(u => u.user !== 'admin' && u.user !== currentUser.user).map(u => (
-                          <tr key={u.user} className="group hover:bg-white/[0.02] transition-all">
+                        {users.filter(u => u.user !== 'admin' && u.user !== currentUser.user).map((u, i) => (
+                          <tr key={`manage_user_${u.user}_${i}`} className="group hover:bg-white/[0.02] transition-all">
                             <td className="p-6">
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-orange/10 rounded-full border border-orange/20 flex items-center justify-center font-black text-orange">
@@ -2986,7 +3010,7 @@ ${renderIdentifiers(ban.identifiers)}
 
 function TeamCard({ img, name, role, highlight, small }: { img: string, name: string, role: string, highlight?: boolean, small?: boolean, key?: any }) {
   return (
-    <div className={`card glow-hover flex flex-col items-center flex-shrink-0 transition-transform ${highlight ? 'scale-120 !border-orange z-10' : ''} ${small ? 'p-4 min-w-[140px]' : 'p-8 min-w-[220px]'}`}>
+    <div className={`card glow-hover flex flex-col items-center flex-shrink-0 transition-transform ${highlight ? 'scale-110 !border-orange z-10' : ''} ${small ? 'p-4 min-w-[140px]' : 'p-8 min-w-[220px]'}`}>
       <img src={img} className={`${small ? 'w-20 h-20' : 'w-32 h-32'} rounded-full border-4 border-[#222] object-cover mb-4`} />
       <h4 className={`${small ? 'text-sm' : 'text-lg'} font-bold`}>{name}</h4>
       <p className="text-[10px] text-text-dim uppercase tracking-tighter">{role}</p>
